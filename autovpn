@@ -1,0 +1,59 @@
+#!/usr/bin/env python3
+import asyncio
+import subprocess
+import requests
+import os
+import argparse
+
+
+config = None
+ip_server = None
+
+
+async def change_ip_to_config(ip):
+    # check vpn config
+    if not os.path.exists(config):
+        raise Exception("config file not exists.")
+    new_file = []
+    with open(config, 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            if 'remote ' in line:
+                units = line.split(' ')
+                units[1] = ip
+                new_file.append(' '.join(units))
+            else:
+                new_file.append(line)
+    with open('temp.ovpn', 'w') as f:
+        f.writelines(new_file)
+
+
+def start_openvpn():
+    p = subprocess.Popen(['openvpn', '--config', 'temp.ovpn'])
+    p.wait()
+
+
+def get_latest_ip():
+    r = requests.get(ip_server)
+    print('remote ip: {}'.format(r.text))
+    return r.text
+
+
+async def main():
+    while True:
+        ip = get_latest_ip()
+        await change_ip_to_config(ip)
+        start_openvpn()
+
+
+if __name__ == '__main__':
+    if os.getuid() != 0:
+        raise Exception("need sudo")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', help='open vpn config file.')
+    parser.add_argument('--ip', help='ip server')
+    args = parser.parse_args()
+    config = args.config
+    ip_server = args.ip
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
